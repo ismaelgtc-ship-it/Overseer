@@ -1,27 +1,42 @@
-import { computeDiff } from "../diff/engine.js";
 import { getDb } from "../db/mongo.js";
+import { env } from "../env.js";
+import { computeGuildDiff } from "../diff/engine.js";
 
 export async function saveSnapshot(snapshot) {
   const db = await getDb();
-  const collection = db.collection("guild_snapshots");
+  const snapshots = db.collection("guild_snapshots");
+  const diffs = db.collection("guild_diffs");
 
-  const previous = await collection
-    .find({ guildId: snapshot.guildId })
+  const guildId = snapshot?.guild?.id ?? env.GUILD_ID ?? null;
+  const takenAt = snapshot?.takenAt ?? new Date().toISOString();
+
+  // Get previous snapshot BEFORE insert (so we can diff after insert)
+  const previous = await snapshots
+    .find({ guildId })
     .sort({ takenAt: -1 })
     .limit(1)
     .next();
 
-  const result = await collection.insertOne({
-    ...snapshot,
-    takenAt: new Date()
-  });
+  const doc = { guildId, takenAt, snapshot };
 
-  const current = await collection.findOne({ _id: result.insertedId });
+  const result = await snapshots.insertOne(doc);
+  const current = { ...doc, _id: result.insertedId };
 
   if (previous) {
-    const diff = computeDiff(previous, current);
-    await db.collection("guild_diffs").insertOne(diff);
+    const diff = computeGuildDiff(previous, current);
+    await diffs.insertOne(diff);
   }
 
   return current;
+}
+
+export async function getLatestSnapshot(guildId) {
+  const db = await getDb();
+  const col = db.collection("guild_snapshots");
+  const doc = await col
+    .find({ guildId })
+    .sort({ takenAt: -1 })
+    .limit(1)
+    .next();
+  return doc ?? null;
 }
