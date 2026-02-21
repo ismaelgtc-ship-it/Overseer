@@ -1,6 +1,6 @@
 import { getDb } from "../db/mongo.js";
 import { env } from "../env.js";
-import { computeGuildDiff } from "../diff/engine.js";
+import { computeDiff } from "../diff/engine.js";
 
 export async function saveSnapshot(snapshot) {
   const db = await getDb();
@@ -10,7 +10,7 @@ export async function saveSnapshot(snapshot) {
   const guildId = snapshot?.guild?.id ?? env.GUILD_ID ?? null;
   const takenAt = snapshot?.takenAt ?? new Date().toISOString();
 
-  // Get previous snapshot BEFORE insert (so we can diff after insert)
+  // Fetch previous snapshot BEFORE insert (so we can diff after insert)
   const previous = await snapshots
     .find({ guildId })
     .sort({ takenAt: -1 })
@@ -18,12 +18,11 @@ export async function saveSnapshot(snapshot) {
     .next();
 
   const doc = { guildId, takenAt, snapshot };
-
   const result = await snapshots.insertOne(doc);
   const current = { ...doc, _id: result.insertedId };
 
   if (previous) {
-    const diff = computeGuildDiff(previous, current);
+    const diff = computeDiff(previous, current);
     await diffs.insertOne(diff);
   }
 
