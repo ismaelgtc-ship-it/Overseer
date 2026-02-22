@@ -94,16 +94,3 @@ export function computeDiff(prevDoc, currDoc) {
 
 // Back-compat alias
 export const computeGuildDiff = computeDiff;
-
-// Storage helper (Overseer) — latest diff
-export async function getLatestDiff(guildId) {
-  const { getDb } = await import("../db/mongo.js");
-  const db = await getDb();
-  const col = db.collection("guild_diffs");
-  const doc = await col
-    .find({ guildId })
-    .sort({ takenAt: -1 })
-    .limit(1)
-    .next();
-  return doc ?? null;
-}
