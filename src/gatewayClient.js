@@ -1,38 +1,29 @@
-import { createServer } from "node:http";
+import { fetch } from "undici";
 
-const INTERNAL_KEY = process.env.INTERNAL_API_KEY;
-if (!INTERNAL_KEY) {
-  console.error("[overseer] INTERNAL_API_KEY missing");
+const GATEWAY_URL = process.env.GATEWAY_URL;
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
+async function post(path) {
+  if (!GATEWAY_URL || !INTERNAL_API_KEY) return;
+
+  const url = `${GATEWAY_URL.replace(/\/$/, "")}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "x-internal-key": INTERNAL_API_KEY
+    }
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`gateway ${path} failed: ${res.status} ${body}`);
+  }
 }
 
-export function startGateway() {
-  const server = createServer((req, res) => {
-    const key = req.headers["x-internal-key"];
+export async function gatewayRegister() {
+  await post("/register");
+}
 
-    if (key !== INTERNAL_KEY) {
-      res.writeHead(401);
-      res.end("Unauthorized");
-      return;
-    }
-
-    if (req.url === "/register") {
-      res.writeHead(200);
-      res.end("registered");
-      return;
-    }
-
-    if (req.url === "/heartbeat") {
-      res.writeHead(200);
-      res.end("ok");
-      return;
-    }
-
-    res.writeHead(404);
-    res.end("not found");
-  });
-
-  const port = process.env.PORT || 10000;
-  server.listen(port, () => {
-    console.log(`[overseer] gateway listening on ${port}`);
-  });
+export async function gatewayHeartbeat() {
+  await post("/heartbeat");
 }
