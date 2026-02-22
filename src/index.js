@@ -4,6 +4,9 @@ import { gatewayRegister, gatewayHeartbeat } from "./gatewayClient.js";
 import { runOnce } from "./jobs/runner.js";
 import { getLatestSnapshot } from "./snapshot/store.js";
 import { pullSnapshotFromRelay } from "./snapshot/pull.js";
+import { startGateway } from "./gatewayClient.js";
+
+startGateway();
 
 function requireSecretIfConfigured(req, res) {
   if (!env.OVERSEER_SECRET) return true;
