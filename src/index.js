@@ -1,94 +1,39 @@
+import { Client, GatewayIntentBits } from "discord.js";
 import http from "node:http";
-import { env } from "./env.js";
-import { gatewayRegister, gatewayHeartbeat } from "./gatewayClient.js";
-import { runOnce } from "./jobs/runner.js";
-import { getLatestSnapshot } from "./snapshot/store.js";
-import { pullSnapshotFromRelay } from "./snapshot/pull.js";
-import { startGateway } from "./gatewayClient.js";
 
-startGateway();
+const PORT = Number(process.env.PORT ?? 10000);
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN ?? "";
 
-function requireSecretIfConfigured(req, res) {
-  if (!env.OVERSEER_SECRET) return true;
-  const got = req.headers["x-overseer-secret"];
-  if (got !== env.OVERSEER_SECRET) {
-    res.writeHead(401, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "unauthorized" }));
-    return false;
-  }
-  return true;
-}
-
-// Render (Free) Web Service health checks require an HTTP listener.
-const server = http.createServer(async (req, res) => {
+// Health server (Render free necesita listener HTTP)
+const server = http.createServer((req, res) => {
   const url = req.url ?? "/";
-
-  if (url === "/healthz" || url === "/") {
+  if (url === "/" || url === "/healthz") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", service: "overseer", version: env.SERVICE_VERSION }));
+    res.end(JSON.stringify({ status: "ok", service: "relay" }));
     return;
   }
-
-  // Snapshot API (Phase 1 clone engine)
-  if (url === "/snapshot/latest" && req.method === "GET") {
-    if (!requireSecretIfConfigured(req, res)) return;
-    if (!env.GUILD_ID) {
-      res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "bad_request", error: "GUILD_ID missing" }));
-      return;
-    }
-    try {
-      const doc = await getLatestSnapshot(env.GUILD_ID);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", latest: doc }));
-    } catch (e) {
-      res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "error", error: String(e?.message ?? e) }));
-    }
-    return;
-  }
-
-  if (url === "/snapshot/pull" && req.method === "POST") {
-    if (!requireSecretIfConfigured(req, res)) return;
-    try {
-      const snap = await pullSnapshotFromRelay();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", snapshot: { guildId: snap.guild?.id, takenAt: snap.takenAt } }));
-    } catch (e) {
-      res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "error", error: String(e?.message ?? e) }));
-    }
-    return;
-  }
-
   res.writeHead(404, { "content-type": "application/json" });
   res.end(JSON.stringify({ status: "not_found" }));
 });
 
-server.listen(env.PORT, "0.0.0.0", () => {
-  console.log(`[overseer] health server listening on :${env.PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`[relay] health server listening on :${PORT}`);
 });
 
-async function main() {
-  console.log("[overseer] boot", { version: env.SERVICE_VERSION });
+// Si no hay token, NO caemos: dejamos el servicio vivo (y visible en logs)
+if (!DISCORD_TOKEN || DISCORD_TOKEN.trim().length < 20) {
+  console.error("[relay] DISCORD_TOKEN missing/invalid. Bot login skipped; service stays alive for health checks.");
+} else {
+  const client = new Client({
+    intents: [GatewayIntentBits.Guilds],
+  });
 
-  const hasGateway = Boolean(env.GATEWAY_URL) && Boolean(env.INTERNAL_API_KEY);
-  if (hasGateway) {
-    await gatewayRegister();
-    setInterval(() => {
-      gatewayHeartbeat().catch((err) => console.error("[overseer] heartbeat error", err));
-    }, 30_000);
-  } else {
-    console.log("[overseer] gateway disabled (no GATEWAY_URL / INTERNAL_API_KEY)");
-  }
+  client.once("clientReady", () => {
+    console.log(`[relay] logged in as ${client.user?.tag ?? "unknown"}`);
+  });
 
-  // Minimal job tick every 5s
-  setInterval(() => {
-    runOnce().catch((err) => console.error("[overseer] job error", err));
-  }, 5_000);
+  client.login(DISCORD_TOKEN).catch((err) => {
+    console.error("[relay] login failed:", err?.message ?? err);
+    // No reventamos el proceso; mantenemos health server vivo
+  });
 }
-
-main().catch((err) => {
-  console.error("[overseer] fatal", err);
-  process.exitCode = 1;
-});
