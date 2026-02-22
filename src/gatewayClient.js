@@ -1,38 +1,38 @@
-import { request } from "undici";
-import { env } from "./env.js";
+import { createServer } from "node:http";
 
-function url(path) {
-  return new URL(path, env.GATEWAY_URL).toString();
+const INTERNAL_KEY = process.env.INTERNAL_API_KEY;
+if (!INTERNAL_KEY) {
+  console.error("[overseer] INTERNAL_API_KEY missing");
 }
 
-export async function gatewayRegister() {
-  const res = await request(url("/internal/register"), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-key": env.INTERNAL_API_KEY
-    },
-    body: JSON.stringify({
-      service: "overseer",
-      version: env.SERVICE_VERSION,
-      meta: { platform: "render" }
-    })
-  });
-  const json = await res.body.json().catch(() => ({}));
-  if (res.statusCode >= 400) throw new Error(`gateway register failed: ${res.statusCode} ${JSON.stringify(json)}`);
-  return json;
-}
+export function startGateway() {
+  const server = createServer((req, res) => {
+    const key = req.headers["x-internal-key"];
 
-export async function gatewayHeartbeat() {
-  const res = await request(url("/internal/heartbeat"), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-key": env.INTERNAL_API_KEY
-    },
-    body: JSON.stringify({ service: "overseer" })
+    if (key !== INTERNAL_KEY) {
+      res.writeHead(401);
+      res.end("Unauthorized");
+      return;
+    }
+
+    if (req.url === "/register") {
+      res.writeHead(200);
+      res.end("registered");
+      return;
+    }
+
+    if (req.url === "/heartbeat") {
+      res.writeHead(200);
+      res.end("ok");
+      return;
+    }
+
+    res.writeHead(404);
+    res.end("not found");
   });
-  const json = await res.body.json().catch(() => ({}));
-  if (res.statusCode >= 400) throw new Error(`gateway heartbeat failed: ${res.statusCode} ${JSON.stringify(json)}`);
-  return json;
+
+  const port = process.env.PORT || 10000;
+  server.listen(port, () => {
+    console.log(`[overseer] gateway listening on ${port}`);
+  });
 }
