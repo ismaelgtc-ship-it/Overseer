@@ -1,29 +1,33 @@
 import { fetch } from "undici";
 
-const GATEWAY_URL = process.env.GATEWAY_URL;
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+export async function gatewayRegister({ gatewayUrl, internalKey, version, meta } = {}) {
+  if (!gatewayUrl || !internalKey) return false;
 
-async function post(path) {
-  if (!GATEWAY_URL || !INTERNAL_API_KEY) return;
-
-  const url = `${GATEWAY_URL.replace(/\/$/, "")}${path}`;
+  const url = `${gatewayUrl.replace(/\/$/, "")}/internal/register`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      "x-internal-key": INTERNAL_API_KEY
-    }
+      "content-type": "application/json",
+      "x-internal-key": internalKey
+    },
+    body: JSON.stringify({ service: "heavy", version, meta })
   });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`gateway ${path} failed: ${res.status} ${body}`);
-  }
+  return res.ok;
 }
 
-export async function gatewayRegister() {
-  await post("/register");
-}
+export async function gatewayHeartbeat({ gatewayUrl, internalKey } = {}) {
+  if (!gatewayUrl || !internalKey) return false;
 
-export async function gatewayHeartbeat() {
-  await post("/heartbeat");
+  const url = `${gatewayUrl.replace(/\/$/, "")}/internal/heartbeat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-internal-key": internalKey
+    },
+    body: JSON.stringify({ service: "heavy" })
+  });
+
+  return res.ok;
 }
