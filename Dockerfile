@@ -1,16 +1,14 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copiamos ambos para instalación correcta
-COPY package.json package-lock.json* ./
-
-# Instalación limpia
-RUN npm install --omit=dev --no-audit --no-fund
-
-# Copiamos el resto del código
-COPY . .
-
 ENV NODE_ENV=production
+
+# Deterministic installs for Render
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+# Copy runtime sources
+COPY . .
 
 CMD ["node", "src/index.js"]
