@@ -1,14 +1,18 @@
-FROM node:20-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Deterministic installs when a lockfile exists; fallback to npm install if it doesn't.
+COPY package.json package-lock.json* ./
 
-# Deterministic installs for Render
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+RUN if [ -f package-lock.json ]; then \
+      npm ci --omit=dev --no-audit --no-fund; \
+    else \
+      npm install --omit=dev --no-audit --no-fund; \
+    fi
 
-# Copy runtime sources
 COPY . .
+
+ENV NODE_ENV=production
 
 CMD ["node", "src/index.js"]
